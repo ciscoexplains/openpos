@@ -1,0 +1,47 @@
+name: Coin Scanner
+
+on:
+  schedule:
+    - cron: "0,30 * * * *"   # every :00 and :30 (UTC, same minute marks in WIB)
+  workflow_dispatch:          # lets you run it manually with the "Run workflow" button
+
+concurrency:
+  group: coin-scanner
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install numpy pandas requests
+
+      # Keeps signals_log.csv between runs so --cooldown works
+      - name: Restore signal log
+        uses: actions/cache/restore@v4
+        with:
+          path: signals_log.csv
+          key: signals-log-${{ github.run_id }}
+          restore-keys: signals-log-
+
+      - name: Run scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PREMIUM_TELEGRAM_CHAT_ID: ${{ secrets.PREMIUM_TELEGRAM_CHAT_ID }}
+        run: python coin_scanner.py --send --log signals_log.csv
+
+      - name: Save signal log
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: signals_log.csv
+          key: signals-log-${{ github.run_id }}
