@@ -2,7 +2,7 @@ name: Coin Scanner
 
 on:
   schedule:
-    - cron: "0,30 * * * *"   # every :00 and :30 (UTC, same minute marks in WIB)
+    - cron: "*/15 * * * *"   # every 15 minutes
   workflow_dispatch:          # lets you run it manually with the "Run workflow" button
 
 concurrency:
