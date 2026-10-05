@@ -423,6 +423,8 @@ def entry_plan(mu, sigma, horizon, fee, rng, n_sim=6000, df=4):
 
 def format_signal_v2(r, htf, ltf, horizon, risk, sid):
     f = lambda x: f"{x:.6g}"
+    side = getattr(r, "side", "LONG")
+    market = "FUTURES" if side == "SHORT" else "SPOT"
     sl_pct = (r.sl / r.entry - 1) * 100
     tp1_pct = (r.tp1 / r.entry - 1) * 100 if hasattr(r, "tp1") and r.tp1 else (r.tp / r.entry - 1) * 100 * 0.6
     tp2_pct = (r.tp2 / r.entry - 1) * 100 if hasattr(r, "tp2") and r.tp2 else (r.tp / r.entry - 1) * 100
@@ -437,7 +439,7 @@ def format_signal_v2(r, htf, ltf, horizon, risk, sid):
     
     return (
         f"📊 SIGNAL {sid}\n"
-        f"{r.symbol}/USDT · SPOT · LONG · HTF {htf} / LTF {ltf}\n\n"
+        f"{r.symbol}/USDT · {market} · {side} · HTF {htf} / LTF {ltf}\n\n"
         f"🎯 Entry Zone: {f(r.entry)} (limit)\n"
         f"   Deep Entry: {f(r.entry_deep)} (25% fill prob)\n"
         f"🛑 Stop Loss: {f(r.sl)} ({sl_pct:+.1f}%)\n"
@@ -454,11 +456,13 @@ def format_signal_v2(r, htf, ltf, horizon, risk, sid):
 def format_signal(r, interval, horizon, risk, sid):
     """Pesan sinyal gaya Telegram. Sengaja menampilkan P(SL) & disclaimer apa adanya."""
     f = lambda x: f"{x:.6g}"
+    side = getattr(r, "side", "LONG")
+    market = "FUTURES" if side == "SHORT" else "SPOT"
     sl_pct = (r.sl / r.entry - 1) * 100
     tp_pct = (r.tp / r.entry - 1) * 100
     return (
         f"📊 SIGNAL {sid}\n"
-        f"{r.symbol}/USDT · SPOT · LONG · TF {interval}\n\n"
+        f"{r.symbol}/USDT · {market} · {side} · TF {interval}\n\n"
         f"🎯 Entry (limit): {f(r.entry)}\n"
         f"   Entry lebih dalam (opsional): {f(r.entry_deep)}\n"
         f"🛑 Stop-loss: {f(r.sl)} ({sl_pct:+.1f}%)\n"
@@ -487,9 +491,10 @@ def format_top10_daily(df, interval, tier="pro"):
             lines.append(f"{i}. 🔒 *Premium Member Only*")
         else:
             status_emoji = "🟢" if r.status == "ENTRY" else ("🟡" if r.status == "PANTAU" else "🔴")
-            trend = "↑" if r.trend_t > 0 else "↓"
+            side_str = getattr(r, "side", "LONG")
+            trend = "↑" if side_str == "LONG" else "↓"
             lines.append(
-                f"{i}. {status_emoji} *{r.symbol}* {trend} "
+                f"{i}. {status_emoji} *{r.symbol}* ({side_str}) {trend} "
                 f"Score:{r.score:+.2f} P(win):{r.p_win:.1f}% EV:{r.ev:+.2f}% "
                 f"H:{r.hurst:.2f} Sortino:{r.sortino:.2f} MDD:{r.mdd:.1f}%"
             )
@@ -538,7 +543,7 @@ def zscore(s):
     return (s - s.mean()) / sd if sd > 0 else s * 0
 
 
-def analyze_all(universe, horizon, fee, risk=0.01, seed=42):
+def analyze_all(universe, horizon, fee, risk=0.01, seed=42, side="both"):
     rng = np.random.default_rng(seed)
     rows = []
     for sym, d in universe.items():
@@ -563,24 +568,35 @@ def analyze_all(universe, horizon, fee, risk=0.01, seed=42):
     df["mu"] = B * m0 + (1 - B) * df.mu_raw
     df["trend_t"] = df.mu_raw / np.sqrt(df.mu_var)
 
-    # Sinyal sadar-rezim: H>0.5 hargai tren, H<0.5 hukum tren
-    df["regime"] = np.sign(df.trend_t) * (df.hurst - 0.5) * np.abs(df.trend_t).clip(upper=4)
+    if side == "long":
+        df["side"] = "LONG"
+    elif side == "short":
+        df["side"] = "SHORT"
+    else:
+        df["side"] = np.where(df.trend_t >= 0, "LONG", "SHORT")
 
-    res = [monte_carlo(m, s, horizon, fee, rng) for m, s in zip(df.mu, df.sigma)]
+    is_short = df["side"] == "SHORT"
+    df["mu_trade"] = np.where(is_short, -df.mu, df.mu)
+    df["trend_dir"] = np.where(is_short, -df.trend_t, df.trend_t)
+
+    # Sinyal sadar-rezim: H>0.5 hargai tren, H<0.5 hukum tren
+    df["regime"] = np.sign(df.trend_dir) * (df.hurst - 0.5) * np.abs(df.trend_dir).clip(upper=4)
+
+    res = [monte_carlo(m, s, horizon, fee, rng) for m, s in zip(df.mu_trade, df.sigma)]
     df["p_win"], df["ev"], df["cvar5"] = zip(*res)
 
-    df["kelly"] = (0.5 * df.mu / (df.sigma ** 2)).clip(0, 0.25)  # half-Kelly, dibatasi maks 25%
+    df["kelly"] = (0.5 * df.mu_trade / (df.sigma ** 2)).clip(0, 0.25)  # half-Kelly, dibatasi maks 25%
 
     # Rencana entry / SL / TP per koin
-    plans = [entry_plan(m, sg, horizon, fee, rng) for m, sg in zip(df.mu, df.sigma)]
+    plans = [entry_plan(m, sg, horizon, fee, rng) for m, sg in zip(df.mu_trade, df.sigma)]
     pl = pd.DataFrame(plans)
-    df["entry"] = df.close * np.exp(-pl.d_ideal)
-    df["entry_deep"] = df.close * np.exp(-pl.d_deep)
-    df["sl"] = df.entry * np.exp(-pl.sl)
-    df["tp"] = df.entry * np.exp(pl.tp)
-    df["tp1"] = df.entry * np.exp(pl.tp1)
-    df["tp2"] = df.entry * np.exp(pl.tp2)
-    df["tp3"] = df.entry * np.exp(pl.tp3)
+    df["entry"] = np.where(is_short, df.close * np.exp(pl.d_ideal), df.close * np.exp(-pl.d_ideal))
+    df["entry_deep"] = np.where(is_short, df.close * np.exp(pl.d_deep), df.close * np.exp(-pl.d_deep))
+    df["sl"] = np.where(is_short, df.entry * np.exp(pl.sl), df.entry * np.exp(-pl.sl))
+    df["tp"] = np.where(is_short, df.entry * np.exp(-pl.tp), df.entry * np.exp(pl.tp))
+    df["tp1"] = np.where(is_short, df.entry * np.exp(-pl.tp1), df.entry * np.exp(pl.tp1))
+    df["tp2"] = np.where(is_short, df.entry * np.exp(-pl.tp2), df.entry * np.exp(pl.tp2))
+    df["tp3"] = np.where(is_short, df.entry * np.exp(-pl.tp3), df.entry * np.exp(pl.tp3))
     df["trend_regime"] = np.where(df.trend_t > 0.5, "BULLISH", np.where(df.trend_t < -0.5, "BEARISH", "SIDEWAYS"))
     df["vol_regime"] = np.where(df.sigma > 0.02, "HIGH_VOL", "NORMAL_VOL")
     
@@ -588,11 +604,11 @@ def analyze_all(universe, horizon, fee, risk=0.01, seed=42):
         df[c] = pl[c]
     sl_pct = 1 - np.exp(-pl.sl)
     df["alloc"] = np.minimum(df.kelly, risk / sl_pct)          # % modal; risiko ~`risk` jika kena SL
-    df["status"] = np.where((df.ev_trade > 0) & (df.trend_t > 0) & (df.p_win >= 0.5), "ENTRY",
+    df["status"] = np.where((df.ev_trade > 0) & (df.trend_dir > 0) & (df.p_win >= 0.5), "ENTRY",
                             np.where(df.ev_trade > 0, "PANTAU", "SKIP"))
 
     ratio = df.ev / (df.cvar5.abs() + 1e-9)
-    df["score"] = (0.30 * zscore(ratio) + 0.25 * zscore(df.p_win) + 0.20 * zscore(df.trend_t)
+    df["score"] = (0.30 * zscore(ratio) + 0.25 * zscore(df.p_win) + 0.20 * zscore(df.trend_dir)
                    + 0.15 * zscore(df.regime) + 0.10 * zscore(df.sortino)
                    - 0.10 * zscore(df.mdd) + 0.05 * zscore(df.liq))
     df = df.sort_values("score", ascending=False).reset_index(drop=True)
@@ -611,6 +627,8 @@ def main():
     ap.add_argument("--fee", type=float, default=0.002, help="biaya round-trip (0.002 = 0.2%%)")
     ap.add_argument("--risk", type=float, default=0.01,
                     help="risiko per trade jika kena SL, fraksi modal (0.01 = 1%%)")
+    ap.add_argument("--side", default="both", choices=["both", "long", "short"],
+                    help="pilih tipe sinyal: long, short, atau both")
     ap.add_argument("--show", type=int, default=10, help="jumlah koin di tabel saran entry")
     ap.add_argument("--telegram", action="store_true", help="cetak pesan sinyal siap-kirim")
     ap.add_argument("--send", action="store_true", help="kirim sinyal ke Telegram (butuh env token)")
@@ -641,16 +659,16 @@ def main():
                      "Atau jalankan dengan --demo.")
         universe = build_universe(active, tick, a.top, a.min_vol, a.interval, a.bars)
 
-    df = analyze_all(universe, a.horizon, a.fee, a.risk)
+    df = analyze_all(universe, a.horizon, a.fee, a.risk, side=a.side)
     if df.empty:
         sys.exit("Tidak ada data yang cukup.")
 
-    show = df[["symbol", "src", "close", "score", "p_win", "ev", "cvar5", "trend_t", "hurst",
+    show = df[["symbol", "side", "src", "close", "score", "p_win", "ev", "cvar5", "trend_t", "hurst",
                "sortino", "mdd", "kelly"]].copy()
     for c in ("p_win", "ev", "cvar5", "mdd"):
         show[c] = (show[c] * 100).round(2)
     pd.set_option("display.width", 220)
-    print(f"\nTOP 15 (horizon {a.horizon} bar {a.interval}, fee {a.fee*100:.2f}%) - {len(df)} koin dianalisis")
+    print(f"\nTOP 15 (horizon {a.horizon} bar {a.interval}, fee {a.fee*100:.2f}%, side {a.side}) - {len(df)} koin dianalisis")
     print(show.head(15).round(3).to_string())
     def fmt(x):
         return f"{x:.6g}"
@@ -660,7 +678,7 @@ def main():
 
     rows = []
     for sym, r in df.head(a.show).iterrows():
-        rows.append({"symbol": r.symbol, "status": r.status, "harga": fmt(r.close),
+        rows.append({"symbol": r.symbol, "side": r.side, "status": r.status, "harga": fmt(r.close),
                      "entry_limit": pct(r.entry, r.close), "entry_dalam": pct(r.entry_deep, r.close),
                      "SL": pct(r.sl, r.entry), "TP": pct(r.tp, r.entry), "RR": round(r.rr, 2),
                      "P(TP)%": round(r.p_tp * 100, 1), "P(SL)%": round(r.p_sl * 100, 1),
