@@ -62,8 +62,9 @@ class TestSignalV2(unittest.TestCase):
             "vol_regime": "NORMAL_VOL"
         })
         msg = format_signal_v2(row, "4h", "1h", 24, 0.01, "20261004-ETH")
-        self.assertIn("FUTURES · SHORT", msg)
-        self.assertIn("ETH/USDT", msg)
+        self.assertIn("FUTURES", msg)
+        self.assertIn("SHORT", msg)
+        self.assertIn("ETHUSDT", msg)
 
 class TestIntegration(unittest.TestCase):
     def test_full_pipeline_demo(self):

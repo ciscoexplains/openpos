@@ -262,7 +262,8 @@ def build_universe(active, tick, top_n, min_vol, interval, bars):
     cands = [(b, sum(v.values())) for b, v in vols.items()
              if max(v.values()) >= min_vol and not is_junk(b, allbases)]
     cands.sort(key=lambda x: -x[1])
-    cands = cands[:top_n]
+    if top_n > 0:
+        cands = cands[:top_n]
     print(f"Kandidat: {len(cands)} koin. Mengunduh candle {interval}...")
 
     def fetch(base, total):
@@ -436,71 +437,61 @@ def format_signal_v2(r, htf, ltf, horizon, risk, sid):
     
     trend_regime = getattr(r, "trend_regime", "BULLISH").replace("_", " ")
     vol_regime = getattr(r, "vol_regime", "NORMAL_VOL").replace("_", " ")
+    side_emoji = "🟢" if side == "LONG" else "🔴"
     
     return (
-        f"📊 SIGNAL {sid}\n"
-        f"{r.symbol}/USDT · {market} · {side} · HTF {htf} / LTF {ltf}\n\n"
-        f"🎯 Entry Zone: {f(r.entry)} (limit)\n"
-        f"   Deep Entry: {f(r.entry_deep)} (25% fill prob)\n"
-        f"🛑 Stop Loss: {f(r.sl)} ({sl_pct:+.1f}%)\n"
-        f"✅ TP1: {f(tp1_val)} ({tp1_pct:+.1f}%) | TP2: {f(tp2_val)} ({tp2_pct:+.1f}%) | TP3: {f(tp3_val)} ({tp3_pct:+.1f}%)\n"
-        f"⚖️ Risk:Reward = 1 : {r.rr:.2f}\n\n"
-        f"📈 HTF Bias: {trend_regime} | Vol: {vol_regime}\n"
-        f"💼 Position sizing: max risk {risk*100:.1f}% capital (alloc ~{r.alloc*100:.1f}%)\n"
-        f"⏳ Valid: {horizon} bars ({ltf}) | Cancel limit if unfilled in {int(r.fill_bars)} bars.\n\n"
-        f"📊 Model Estimate: P(TP) {r.p_tp*100:.0f}% · P(SL) {r.p_sl*100:.0f}% · EV {r.ev_trade*100:+.2f}%\n\n"
-        f"⚠️ Model estimate, not financial advice. Practice risk management."
+        f"{side_emoji} *#{r.symbol}USDT — {side}*\n"
+        f"`{market}` · HTF {htf} / LTF {ltf}\n"
+        f"───────────────────────────\n"
+        f"🎯 *ENTRY ZONE*\n"
+        f"• Limit: `{f(r.entry)}` \n"
+        f"• Deep: `{f(r.entry_deep)}` (25% fill prob)\n\n"
+        f"🎯 *TARGETS*\n"
+        f"• TP1: `{f(tp1_val)}` ({tp1_pct:+.1f}%)\n"
+        f"• TP2: `{f(tp2_val)}` ({tp2_pct:+.1f}%)\n"
+        f"• TP3: `{f(tp3_val)}` ({tp3_pct:+.1f}%)\n"
+        f"• SL: `{f(r.sl)}` ({sl_pct:+.1f}%)\n\n"
+        f"📊 *METRICS*\n"
+        f"• R:R Ratio: `1 : {r.rr:.2f}`\n"
+        f"• HTF Bias: `{trend_regime}` | Vol: `{vol_regime}`\n"
+        f"• Win Prob: `{r.p_tp*100:.0f}%` | EV: `{r.ev_trade*100:+.2f}%`\n"
+        f"• Max Risk: `{risk*100:.1f}%` (Alloc ~`{r.alloc*100:.1f}%`)\n"
+        f"• Valid: `{horizon} bars` ({ltf}) | Cancel in `{int(r.fill_bars)} bars`\n"
+        f"───────────────────────────\n"
+        f"⚠️ _Statistical estimate, not financial advice._"
     )
 
 
 def format_signal(r, interval, horizon, risk, sid):
-    """Pesan sinyal gaya Telegram. Sengaja menampilkan P(SL) & disclaimer apa adanya."""
-    f = lambda x: f"{x:.6g}"
-    side = getattr(r, "side", "LONG")
-    market = "FUTURES" if side == "SHORT" else "SPOT"
-    sl_pct = (r.sl / r.entry - 1) * 100
-    tp_pct = (r.tp / r.entry - 1) * 100
-    return (
-        f"📊 SIGNAL {sid}\n"
-        f"{r.symbol}/USDT · {market} · {side} · TF {interval}\n\n"
-        f"🎯 Entry (limit): {f(r.entry)}\n"
-        f"   Entry lebih dalam (opsional): {f(r.entry_deep)}\n"
-        f"🛑 Stop-loss: {f(r.sl)} ({sl_pct:+.1f}%)\n"
-        f"✅ Take-profit: {f(r.tp)} ({tp_pct:+.1f}%)\n"
-        f"⚖️ Risk:Reward = 1 : {r.rr:.2f}\n\n"
-        f"💼 Ukuran posisi: risiko maks {risk*100:.1f}% modal (alokasi sekitar {r.alloc*100:.0f}% modal)\n"
-        f"⏳ Batalkan limit jika belum terisi dalam {int(r.fill_bars)} bar. "
-        f"Tutup manual jika belum kena SL/TP setelah {horizon} bar.\n\n"
-        f"📈 Estimasi model (bukan jaminan): peluang TP {r.p_tp*100:.0f}% · peluang SL {r.p_sl*100:.0f}% · "
-        f"expected value {r.ev_trade*100:+.2f}% setelah fee\n\n"
-        f"⚠️ Ini estimasi statistik, bukan nasihat keuangan dan bukan jaminan profit. "
-        f"Kerugian sangat mungkin terjadi. Gunakan risiko kecil dan pasang stop-loss."
-    )
+    """Pesan sinyal gaya Telegram."""
+    return format_signal_v2(r, "4h", interval, horizon, risk, sid)
 
 
 def format_top10_daily(df, interval, tier="pro"):
-    """Format top 10 coins untuk daily trading watchlist.
-    tier: "free" -> coins 1-5 masked as 'Premium Member Only', coins 6-10 shown
-          "pro" -> all coins 1-10 shown normally
-    """
+    """Format top 10 coins untuk daily trading watchlist."""
     f = lambda x: f"{x:.6g}"
-    lines = ["📋 *TOP 10 DAILY WATCHLIST*", f"TF {interval} · {len(df)} koin dianalisis", ""]
+    lines = [
+        "📋 *DAILY WATCHLIST*",
+        f"Timeframe: `{interval}` · Analyzed: `{len(df)} coins`",
+        "───────────────────────────"
+    ]
     top10 = df.head(10)
     for i, (_, r) in enumerate(top10.iterrows(), 1):
         if tier == "free" and i <= 5:
-            lines.append(f"{i}. 🔒 *Premium Member Only*")
+            lines.append(f"`{i:2d}.` 🔒 *Premium Member Only*")
         else:
             status_emoji = "🟢" if r.status == "ENTRY" else ("🟡" if r.status == "PANTAU" else "🔴")
             side_str = getattr(r, "side", "LONG")
-            trend = "↑" if side_str == "LONG" else "↓"
             lines.append(
-                f"{i}. {status_emoji} *{r.symbol}* ({side_str}) {trend} "
-                f"Score:{r.score:+.2f} P(win):{r.p_win:.1f}% EV:{r.ev:+.2f}% "
-                f"H:{r.hurst:.2f} Sortino:{r.sortino:.2f} MDD:{r.mdd:.1f}%"
+                f"`{i:2d}.` {status_emoji} *{r.symbol}* (`{side_str}`) · Score: `{r.score:+.2f}` · Win: `{r.p_win*100:.1f}%`"
             )
-    lines.extend(["", "🟢 ENTRY  🟡 PANTAU  🔴 SKIP", "⚠️ Bukan rekomendasi beli/jual. Riset sendiri."])
+    lines.extend([
+        "───────────────────────────",
+        "🟢 ENTRY  🟡 PANTAU  🔴 SKIP",
+        "⚠️ _Not financial advice. DYOR._"
+    ])
     if tier == "free":
-        lines.append("💎 Upgrade ke Premium untuk melihat Top 5: @openposconnect")
+        lines.append("💎 Upgrade to Premium: @openposconnect")
     return "\n".join(lines)
 
 
@@ -621,7 +612,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--interval", default="1h", choices=list(INTERVAL_SEC))
     ap.add_argument("--bars", type=int, default=500)
-    ap.add_argument("--top", type=int, default=40, help="jumlah koin (urut volume)")
+    ap.add_argument("--top", type=int, default=0, help="jumlah koin urut volume (0 = semua/maks koin)")
     ap.add_argument("--min-vol", type=float, default=5e6, help="min volume 24j (USDT)")
     ap.add_argument("--horizon", type=int, default=24, help="horizon simulasi (jumlah bar)")
     ap.add_argument("--fee", type=float, default=0.002, help="biaya round-trip (0.002 = 0.2%%)")
@@ -643,7 +634,8 @@ def main():
     a = ap.parse_args()
 
     if a.demo:
-        universe = demo_universe(a.top, a.bars)
+        n_demo = a.top if a.top > 0 else 40
+        universe = demo_universe(n_demo, a.bars)
     else:
         provs = all_providers()
         if a.sources != "all":
