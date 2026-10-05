@@ -36,9 +36,9 @@ class TestSignalV2(unittest.TestCase):
             "vol_regime": "NORMAL_VOL"
         })
         msg = format_signal_v2(row, "4h", "1h", 24, 0.01, "20261004-BTC")
-        self.assertIn("TP1:", msg)
-        self.assertIn("HTF", msg)
-        self.assertIn("LTF", msg)
+        self.assertIn("TP1", msg)
+        self.assertIn("4H", msg)
+        self.assertIn("1H", msg)
         self.assertIn("LONG", msg)
 
     def test_format_signal_v2_short(self):

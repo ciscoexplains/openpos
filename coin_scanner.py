@@ -436,29 +436,40 @@ def format_signal_v2(r, htf, ltf, horizon, risk, sid):
     tp3_val = r.tp3 if hasattr(r, "tp3") and r.tp3 else r.entry * (1 + tp3_pct/100)
     
     trend_regime = getattr(r, "trend_regime", "BULLISH").replace("_", " ")
-    vol_regime = getattr(r, "vol_regime", "NORMAL_VOL").replace("_", " ")
+    vol_regime = getattr(r, "vol_regime", "NORMAL_VOL").replace("_VOL", "").replace("_", " ")
     side_emoji = "🟢" if side == "LONG" else "🔴"
     
+    htf_str = str(htf).upper()
+    ltf_str = str(ltf).upper()
+    
     return (
-        f"{side_emoji} *#{r.symbol}USDT — {side}*\n"
-        f"`{market}` · HTF `{htf}` / LTF `{ltf}`\n"
-        f"───────────────────────────\n"
-        f"🎯 *ENTRY ZONE*\n"
-        f"• Limit Entry: `{f(r.entry)}` \n"
-        f"• Deep Entry: `{f(r.entry_deep)}` _(25% fill prob)_\n\n"
-        f"🎯 *TARGETS*\n"
-        f"• TP1: `{f(tp1_val)}` ({tp1_pct:+.1f}%)\n"
-        f"• TP2: `{f(tp2_val)}` ({tp2_pct:+.1f}%)\n"
-        f"• TP3: `{f(tp3_val)}` ({tp3_pct:+.1f}%)\n"
-        f"• SL: `{f(r.sl)}` ({sl_pct:+.1f}%)\n\n"
-        f"📊 *METRICS*\n"
-        f"• R:R Ratio: `1 : {r.rr:.2f}`\n"
-        f"• HTF Bias: `{trend_regime}` | Vol: `{vol_regime}`\n"
-        f"• Win Prob: `{r.p_tp*100:.0f}%` | EV: `{r.ev_trade*100:+.2f}%`\n"
-        f"• Max Risk: `{risk*100:.1f}%` (Alloc ~`{r.alloc*100:.1f}%`)\n"
-        f"• Valid: `{horizon} bars` ({ltf}) | Cancel in `{int(r.fill_bars)} bars`\n"
-        f"───────────────────────────\n"
-        f"⚠️ _Statistical estimate, not financial advice._"
+        f"{side_emoji} *#{r.symbol}USDT*  *{side}*\n"
+        f"`{market}` • {htf_str} → {ltf_str} • {trend_regime}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 *ENTRY*\n"
+        f"Limit  `{f(r.entry)}`\n"
+        f"Deep   `{f(r.entry_deep)}`  · 25% fill\n\n"
+        f"🎯 *TARGET*\n"
+        f"TP1  `{f(tp1_val)}`  {tp1_pct:+.1f}%\n"
+        f"TP2  `{f(tp2_val)}`  {tp2_pct:+.1f}%\n"
+        f"TP3  `{f(tp3_val)}`  {tp3_pct:+.1f}%\n\n"
+        f"🛑 *STOP LOSS*\n"
+        f"SL   `{f(r.sl)}`  {sl_pct:+.1f}%\n\n"
+        f"📊 *STATISTICS*\n"
+        f"Win Probability   `{r.p_tp*100:.0f}%`\n"
+        f"Expected Value    `{r.ev_trade*100:+.2f}%`\n"
+        f"Risk / Reward     `1 : {r.rr:.2f}`\n\n"
+        f"📈 *MARKET*\n"
+        f"HTF Bias          `{trend_regime}`\n"
+        f"Volatility        `{vol_regime}`\n\n"
+        f"💰 *POSITION*\n"
+        f"Max Risk          `{risk*100:.1f}%`\n"
+        f"Allocation        `{r.alloc*100:.1f}%`\n\n"
+        f"⏱ *VALIDITY*\n"
+        f"{horizon} bars ({ltf_str})\n"
+        f"Cancel after {int(r.fill_bars)} bars\n\n"
+        f"⚠️ Statistical estimate.\n"
+        f"Not financial advice."
     )
 
 
