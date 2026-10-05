@@ -441,11 +441,11 @@ def format_signal_v2(r, htf, ltf, horizon, risk, sid):
     
     return (
         f"{side_emoji} *#{r.symbol}USDT — {side}*\n"
-        f"`{market}` · HTF {htf} / LTF {ltf}\n"
+        f"`{market}` · HTF `{htf}` / LTF `{ltf}`\n"
         f"───────────────────────────\n"
         f"🎯 *ENTRY ZONE*\n"
-        f"• Limit: `{f(r.entry)}` \n"
-        f"• Deep: `{f(r.entry_deep)}` (25% fill prob)\n\n"
+        f"• Limit Entry: `{f(r.entry)}` \n"
+        f"• Deep Entry: `{f(r.entry_deep)}` _(25% fill prob)_\n\n"
         f"🎯 *TARGETS*\n"
         f"• TP1: `{f(tp1_val)}` ({tp1_pct:+.1f}%)\n"
         f"• TP2: `{f(tp2_val)}` ({tp2_pct:+.1f}%)\n"
@@ -467,17 +467,29 @@ def format_signal(r, interval, horizon, risk, sid):
     return format_signal_v2(r, "4h", interval, horizon, risk, sid)
 
 
-def format_top10_daily(df, interval, tier="pro"):
-    """Format top 10 coins untuk daily trading watchlist."""
+def format_top10_daily(df, interval, tier="pro", seed=None):
+    """Format top 25 coins untuk daily trading watchlist.
+    tier: 'free' -> 10 koin acak di-sensor '🔒 Premium Member Only'
+          'pro'  -> semua 25 koin ditampilkan transparan
+    """
     f = lambda x: f"{x:.6g}"
     lines = [
-        "📋 *DAILY WATCHLIST*",
+        "📋 *DAILY WATCHLIST (TOP 25)*",
         f"Timeframe: `{interval}` · Analyzed: `{len(df)} coins`",
         "───────────────────────────"
     ]
-    top10 = df.head(10)
-    for i, (_, r) in enumerate(top10.iterrows(), 1):
-        if tier == "free" and i <= 5:
+    top25 = df.head(25)
+    
+    # Pilih 10 indeks acak untuk di-sensor jika tier == "free"
+    masked_indices = set()
+    if tier == "free":
+        import random
+        r_gen = random.Random(seed if seed is not None else int(time.time()))
+        available = list(range(1, len(top25) + 1))
+        masked_indices = set(r_gen.sample(available, min(10, len(available))))
+
+    for i, (_, r) in enumerate(top25.iterrows(), 1):
+        if tier == "free" and i in masked_indices:
             lines.append(f"`{i:2d}.` 🔒 *Premium Member Only*")
         else:
             status_emoji = "🟢" if r.status == "ENTRY" else ("🟡" if r.status == "PANTAU" else "🔴")
