@@ -612,7 +612,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--interval", default="1h", choices=list(INTERVAL_SEC))
     ap.add_argument("--bars", type=int, default=500)
-    ap.add_argument("--top", type=int, default=0, help="jumlah koin urut volume (0 = semua/maks koin)")
+    ap.add_argument("--top", type=int, default=300, help="jumlah koin urut volume (default: 300)")
     ap.add_argument("--min-vol", type=float, default=1e5, help="min volume 24j USDT (default: 100rb USDT)")
     ap.add_argument("--horizon", type=int, default=24, help="horizon simulasi (jumlah bar)")
     ap.add_argument("--fee", type=float, default=0.002, help="biaya round-trip (0.002 = 0.2%%)")

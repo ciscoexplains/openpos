@@ -36,7 +36,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PREMIUM_TELEGRAM_CHAT_ID: ${{ secrets.PREMIUM_TELEGRAM_CHAT_ID }}
-        run: python coin_scanner.py --send --log signals_log.csv
+        run: python coin_scanner.py --top 300 --send --log signals_log.csv
 
       - name: Save signal log
         if: always()
